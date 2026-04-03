@@ -12,6 +12,7 @@
       font-size: 16px;
     }
 
+    /* === NUEVO: Barra superior con botones de filtro === */
     .top-bar {
       display: flex;
       gap: 10px;
@@ -41,6 +42,7 @@
       color: #fff;
     }
 
+    /* En móvil, que los botones se acomoden mejor */
     @media (max-width: 480px) {
       .top-bar {
         flex-wrap: wrap;
@@ -51,15 +53,16 @@
       }
     }
 
+    /* === LAYOUT POR DEFECTO: VERTICAL (MÓVIL) === */
     .layout {
       display: flex;
-      flex-direction: column;
+      flex-direction: column;  /* SIEMPRE uno encima de otro por defecto */
       height: 100vh;
     }
 
     .mapa-container {
       flex: none;
-      height: 75vh;
+      height: 75vh;           /* 3/4 del alto de la pantalla para el plano */
       overflow: auto;
       background: #fff;
     }
@@ -73,10 +76,10 @@
 
     .panel-info {
       flex: none;
-      height: 25vh;
+      height: 25vh;           /* 1/4 del alto de la pantalla para el panel */
       padding: 16px;
       background: #ffffff;
-      box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.1); /* sombra arriba */
       box-sizing: border-box;
       overflow-y: auto;
       font-size: 25px;
@@ -104,6 +107,7 @@
     .estado-reservado  { color: #f1c40f; font-weight: bold; }
     .estado-vendido    { color: #e74c3c; font-weight: bold; }
 
+    /* Panel en hasta 2 columnas */
     #infoLote {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -111,32 +115,35 @@
       row-gap: 4px;
     }
 
+    /* En móviles muy estrechos: una sola columna */
     @media (max-width: 480px) {
       #infoLote {
         grid-template-columns: 1fr;
       }
     }
 
+    /* === VISTA ESCRITORIO (ANCHA): COMO ANTES === */
     @media (min-width: 1024px) {
       .layout {
-        flex-direction: row;
+        flex-direction: row;   /* mapa izquierda, panel derecha */
       }
 
       .mapa-container {
         flex: 2;
-        height: auto;
+        height: auto;          /* que se adapte al alto del viewport */
       }
 
       .panel-info {
         flex: 1;
         height: auto;
-        box-shadow: -2px 0 6px rgba(0,0,0,0.1);
+        box-shadow: -2px 0 6px rgba(0,0,0,0.1); /* sombra a la izquierda */
       }
     }
   </style>
 </head>
 <body>
 
+  <!-- === NUEVO: Barra de filtros === -->
   <div class="top-bar">
     <button class="btn-filtro" id="btnDisponibles">Lotes Disponibles</button>
     <button class="btn-filtro" id="btnVendidos">Lotes Vendidos</button>
@@ -144,14 +151,16 @@
   </div>
 
   <div class="layout">
+    <!-- Plano SVG -->
     <div class="mapa-container">
       <object
         id="planoSvg"
-        data="PLANO_SOL_DE_HUARAL_prueba.svg"
+        data="PLANO_SOL_DE _HUARAL_prueba.svg"
         type="image/svg+xml">
       </object>
     </div>
 
+    <!-- Panel de información del lote -->
     <div class="panel-info">
       <h2 id="tituloLote">Seleccione un lote</h2>
       <div id="infoLote">
@@ -161,6 +170,7 @@
   </div>
 
   <script>
+    // URL de tu Apps Script (solo lectura)
     const URL_API = "https://script.google.com/macros/s/AKfycbwmyLh86dC2fE-4mRWoaSadbtjkCU-Jcl3ZcYKN3ZdgVxo__RG0Orl7sdaxxi0JSiNR/exec";
 
     async function obtenerLote(codigo) {
@@ -173,7 +183,6 @@
           console.error("[API] Error HTTP", res.status, res.statusText);
           return null;
         }
-
         const data = await res.json();
         console.log("[API] Respuesta:", data);
         return data;
@@ -221,6 +230,9 @@
       `;
     }
 
+    /**
+     * Conecta los clics del SVG con la API
+     */
     function inicializarEventosSVG() {
       const obj = document.getElementById("planoSvg");
       if (!obj) {
@@ -228,6 +240,9 @@
         return;
       }
 
+      console.log("[SVG] inicializarEventosSVG ejecutado");
+
+      // SIEMPRE esperamos al evento 'load' del <object>
       function conectarEventos() {
         const svgDoc = obj.contentDocument || (obj.getSVGDocument && obj.getSVGDocument());
         if (!svgDoc) {
@@ -258,14 +273,33 @@
       obj.addEventListener("load", conectarEventos, { once: true });
     }
 
+    window.addEventListener("DOMContentLoaded", () => {
+      console.log("[APP] DOMContentLoaded");
+      inicializarEventosSVG();
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      console.log("[APP] DOMContentLoaded");
+      inicializarEventosSVG();
+    });
+
+    /* ===========================================================
+       =================== NUEVO: FILTROS =========================
+       =========================================================== */
+
+    // Cache de estados: Codigo_Automatico -> Estado_en_fase_de_venta
     let ESTADOS = {};
     let SVG_DOC = null;
     let SVG_LOTES = [];
 
-    const COLOR_DISPONIBLE = "#ffffff";
-    const COLOR_VENDIDO    = "#e74c3c";
-    const COLOR_SEPARADO   = "#f1c40f";
-    const COLOR_OTROS      = "#2f2f2f";
+    // Colores
+    const COLOR_DISPONIBLE = "#ffffff";  // blanco
+    const COLOR_VENDIDO    = "#e74c3c";  // rojo
+    const COLOR_SEPARADO   = "#f1c40f";  // amarillo
+    const COLOR_OTROS      = "#2f2f2f";  // gris oscuro (para no resaltados)
+
+    // Estado de filtro actual (null = sin filtro / por defecto)
+    let filtroActual = null; // "disponibles" | "vendidos" | "separados" | null
 
     function normalizar(txt) {
       return String(txt || "")
@@ -275,9 +309,11 @@
         .replace(/[\u0300-\u036f]/g, "");
     }
 
+    // Carga todos los estados desde Apps Script (requiere ?todos=1)
     async function cargarEstadosLotes() {
       try {
         const url = URL_API + "?todos=1";
+        console.log("[API] Cargando estados:", url);
         const res = await fetch(url);
 
         if (!res.ok) {
@@ -286,22 +322,27 @@
         }
 
         const data = await res.json();
-        ESTADOS = {};
 
+        // Esperamos array de objetos con: Codigo_Automatico, Estado_en_fase_de_venta
+        ESTADOS = {};
         (data || []).forEach(row => {
           const code = row.Codigo_Automatico;
-          const estado = row.Estado_en_fase_de_venta;
+          const estado = row.Estado_en_fase_de_venta; // puede venir vacío
           if (code) ESTADOS[code] = estado;
         });
 
+        console.log("[API] Estados cargados:", Object.keys(ESTADOS).length);
+
+        // Si ya tenemos SVG cargado, pintamos por defecto
         if (SVG_DOC && SVG_LOTES.length) {
-          pintarTodosPorEstado();
+          pintarTodosPorEstado(); // al refrescar debe quedar sin filtro
         }
       } catch (err) {
         console.error("[API] Error cargando estados:", err);
       }
     }
 
+    // Obtiene la lista de lotes del SVG y la guarda
     function capturarSVG() {
       const obj = document.getElementById("planoSvg");
       if (!obj) return;
@@ -310,37 +351,49 @@
       if (!SVG_DOC) return;
 
       SVG_LOTES = Array.from(SVG_DOC.querySelectorAll(".lote"));
+      console.log("[FILTRO] Lotes capturados del SVG:", SVG_LOTES.length);
     }
 
+    // Pinta cada lote según su Estado_en_fase_de_venta (sin filtro)
     function pintarTodosPorEstado() {
+      filtroActual = null; // reset de filtro al refrescar
+
+      // Apagar estado visual de botones
       document.querySelectorAll(".btn-filtro").forEach(b => b.classList.remove("activo"));
 
       SVG_LOTES.forEach(el => {
         const codigo = el.id;
-        const estado = ESTADOS[codigo];
+        const estado = ESTADOS[codigo]; // puede ser undefined / vacío
         const estN = normalizar(estado);
 
+        // defaults de trazo visibles
         el.style.stroke = "#000000";
-        el.style.strokeOpacity = 0.25;
+        el.style.strokeOpacity = 0.6;
         el.style.strokeWidth = 2;
 
+        // según reglas pedidas
         if (estN === "") {
+          // Disponible = vacío
           el.style.fill = COLOR_DISPONIBLE;
-          el.style.fillOpacity = 0.55;
+          el.style.fillOpacity = 1;
         } else if (estN === "vendido") {
           el.style.fill = COLOR_VENDIDO;
-          el.style.fillOpacity = 0.65;
+          el.style.fillOpacity = 1;
         } else if (estN === "separado") {
           el.style.fill = COLOR_SEPARADO;
-          el.style.fillOpacity = 0.65;
+          el.style.fillOpacity = 1;
         } else {
+          // cualquier otro valor no contemplado => gris oscuro
           el.style.fill = COLOR_OTROS;
-          el.style.fillOpacity = 0.55;
+          el.style.fillOpacity = 1;
         }
       });
     }
 
+    // Aplica filtro: resalta los que coinciden y pone gris oscuro al resto
     function aplicarFiltro(tipo) {
+      filtroActual = tipo; // "disponibles" | "vendidos" | "separados"
+
       SVG_LOTES.forEach(el => {
         const codigo = el.id;
         const estado = ESTADOS[codigo];
@@ -348,38 +401,41 @@
 
         let coincide = false;
         if (tipo === "disponibles") coincide = (estN === "");
-        if (tipo === "vendidos") coincide = (estN === "vendido");
-        if (tipo === "separados") coincide = (estN === "separado");
+        if (tipo === "vendidos")    coincide = (estN === "vendido");
+        if (tipo === "separados")   coincide = (estN === "separado");
 
+        // Base: todos gris oscuro
         el.style.fill = COLOR_OTROS;
-        el.style.fillOpacity = 0.55;
+        el.style.fillOpacity = 1;
         el.style.stroke = "#000000";
-        el.style.strokeOpacity = 0.25;
+        el.style.strokeOpacity = 0.5;
         el.style.strokeWidth = 2;
 
+        // Si coincide, resalta con el color correspondiente
         if (coincide) {
           if (tipo === "disponibles") {
             el.style.fill = COLOR_DISPONIBLE;
-            el.style.fillOpacity = 0.75;
+            el.style.fillOpacity = 1;
           }
           if (tipo === "vendidos") {
             el.style.fill = COLOR_VENDIDO;
-            el.style.fillOpacity = 0.75;
+            el.style.fillOpacity = 1;
           }
           if (tipo === "separados") {
             el.style.fill = COLOR_SEPARADO;
-            el.style.fillOpacity = 0.75;
+            el.style.fillOpacity = 1;
           }
-          el.style.strokeOpacity = 0.55;
+          el.style.strokeOpacity = 0.9;
           el.style.strokeWidth = 2.5;
         }
       });
     }
 
+    // Conecta botones
     function configurarBotonesFiltro() {
       const btnDisponibles = document.getElementById("btnDisponibles");
-      const btnVendidos = document.getElementById("btnVendidos");
-      const btnSeparados = document.getElementById("btnSeparados");
+      const btnVendidos    = document.getElementById("btnVendidos");
+      const btnSeparados   = document.getElementById("btnSeparados");
 
       function activar(btn) {
         document.querySelectorAll(".btn-filtro").forEach(b => b.classList.remove("activo"));
@@ -405,6 +461,7 @@
       });
     }
 
+    // Inicializa todo el sistema de filtros (sin tocar tu lógica funcional)
     function inicializarFiltros() {
       configurarBotonesFiltro();
       cargarEstadosLotes();
@@ -412,18 +469,24 @@
       const obj = document.getElementById("planoSvg");
       if (!obj) return;
 
+      // Cuando cargue el SVG, capturamos lotes y pintamos por estado
       obj.addEventListener("load", () => {
         capturarSVG();
+
+        // Si ya cargamos estados, pintamos; si no, igual pintamos con "otros" (gris) y luego se actualizará
         if (SVG_DOC && SVG_LOTES.length) {
+          // Si aún no hay ESTADOS (porque no terminó fetch), quedará gris
+          // y luego cuando llegue el fetch, se repinta en pintarTodosPorEstado().
           pintarTodosPorEstado();
         }
       }, { once: true });
     }
 
+    // NUEVO: arrancar filtros al cargar la página
     window.addEventListener("DOMContentLoaded", () => {
-      inicializarEventosSVG();
       inicializarFiltros();
     });
+
   </script>
 
 </body>
