@@ -1,1 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Plano Interactivo Sol de Huaral</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      font-size: 16px;
+    }
 
+    .top-bar {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      position: sticky;
+      top: 0;
+      z-index: 999;
+    }
+
+    .btn-filtro {
+      border: 1px solid #999;
+      background: #f2f2f2;
+      color: #333;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .btn-filtro.activo {
+      border-color: #1f6feb;
+      background: #1f6feb;
+      color: #fff;
+    }
+
+    @media (max-width: 480px) {
+      .top-bar {
+        flex-wrap: wrap;
+      }
+      .btn-filtro {
+        flex: 1 1 calc(50% - 10px);
+        text-align: center;
+      }
+    }
+
+    .layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .mapa-container {
+      flex: none;
+      height: 75vh;
+      overflow: auto;
+      background: #fff;
+    }
+
+    .mapa-container object {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border: none;
+    }
+
+    .panel-info {
+      flex: none;
+      height: 25vh;
+      padding: 16px;
+      background: #ffffff;
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+      box-sizing: border-box;
+      overflow-y: auto;
+      font-size: 25px;
+    }
+
+    .panel-info h2 {
+      margin-top: 0;
+      margin-bottom: 6px;
+      color: #2c3e50;
+      font-size: 30px;
+    }
+
+    .campo {
+      margin-bottom: 4px;
+    }
+
+    .campo b {
+      display: inline-block;
+      width: 130px;
+      color: #555;
+      font-weight: 600;
+    }
+
+    .estado-disponible { color: #2ecc71; font-weight: bold; }
+    .estado-reservado  { color: #f1c40f; font-weight: bold; }
+    .estado-vendido    { color: #e74c3c; font-weight: bold; }
+
+    #infoLote {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 12px;
+      row-gap: 4px;
+    }
+
+    @media (max-width: 480px) {
+      #infoLote {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .layout {
+        flex-direction: row;
+      }
+
+      .mapa-container {
+        flex: 2;
+        height: auto;
+      }
+
+      .panel-info {
+        flex: 1;
+        height: auto;
+        box-shadow: -2px 0 6px rgba(0,0,0,0.1);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <button class="btn-filtro" id="btnDisponibles">Lotes Disponibles</button>
+    <button class="btn-filtro" id="btnVendidos">Lotes Vendidos</button>
+    <button class="btn-filtro" id="btnSeparados">Lotes Separados</button>
+  </div>
+
+  <div class="layout">
+    <div class="mapa-container">
+      <object
+        id="planoSvg"
+        data="PLANO_SOL_DE_HUARAL_prueba.svg"
+        type="image/svg+xml">
+      </object>
+    </div>
+
+    <div class="panel-info">
+      <h2 id="tituloLote">Seleccione un lote</h2>
+      <div id="infoLote">
+        <p>Haga clic en un lote del plano para ver sus detalles aquí mismo.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const URL_API = "https://script.google.com/macros/s/AKfycbwmyLh86dC2fE-4mRWoaSadbtjkCU-Jcl3ZcYKN3ZdgVxo__RG0Orl7sdaxxi0JSiNR/exec";
+
+    async function obtenerLote(codigo) {
+      try {
+        const url = URL_API + "?lote=" + encodeURIComponent(codigo);
+        console.log("[API] Llamando a:", url);
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          console.error("[API] Error HTTP", res.status, res.statusText);
+          return null;
+        }
+
+        const data = await res.json();
+        console.log("[API] Respuesta:", data);
+        return data;
+      } catch (err) {
+        console.error("[API] Error de red o parseo:", err);
+        return null;
+      }
+    }
+
+    function mostrarLoteEnPanel(lote) {
+      const titulo = document.getElementById("tituloLote");
+      const info   = document.getElementById("infoLote");
+
+      if (!lote || Object.keys(lote).length === 0) {
+        titulo.textContent = "Lote no encontrado";
+        info.innerHTML = "<p>No se encontraron datos para este lote.</p>";
+        return;
+      }
+
+      titulo.textContent = "Lote " + (lote.Nombre_Lote || lote.Codigo_Automatico);
+
+      let claseEstado = "";
+      const estado = String(lote.Estado || "").toLowerCase();
+      if (estado.includes("disponible")) claseEstado = "estado-disponible";
+      if (estado.includes("reservado"))  claseEstado = "estado-reservado";
+      if (estado.includes("vendido"))    claseEstado = "estado-vendido";
+
+      info.innerHTML = `
+        <div class="campo"><b>Código automático:</b> ${lote.Codigo_Automatico || ""}</div>
+        <div class="campo"><b>Proyecto:</b> ${lote.Proyecto || ""}</div>
+        <div class="campo"><b>Manzana:</b> ${lote.Manzana || ""}</div>
+        <div class="campo"><b>Nombre de lote:</b> ${lote.Nombre_Lote || ""}</div>
+        <div class="campo"><b>Área (m²):</b> ${lote.Área_Lote_m2 || ""}</div>
+        <div class="campo"><b>Frente (m):</b> ${lote.Frente_m || ""}</div>
+        <div class="campo"><b>Derecha (m):</b> ${lote.Derecha_m || ""}</div>
+        <div class="campo"><b>Izquierda (m):</b> ${lote.Izquierda_m || ""}</div>
+        <div class="campo"><b>Fondo (m):</b> ${lote.Fondo_m || ""}</div>
+        <div class="campo"><b>Estado:</b> <span class="${claseEstado}">${lote.Estado || ""}</span></div>
+        <div class="campo"><b>Precio lista:</b> ${lote.Precio_Lista || ""}</div>
+        <div class="campo"><b>Permite otro precio:</b> ${lote.Permitir_Otro_Precio || ""}</div>
+        <div class="campo"><b>Ubicación:</b> ${lote.Detalles_de_Ubicación || ""}</div>
+        <div class="campo"><b>Motivo no disponible:</b> ${lote.Motivo_por_qué_no_disponible || ""}</div>
+        <div class="campo"><b>Estado en fase de venta:</b> ${lote.Estado_en_fase_de_venta || ""}</div>
+        <div class="campo"><b>Asesor responsable:</b> ${lote.Asesor_Responsable || ""}</div>
+      `;
+    }
+
+    function inicializarEventosSVG() {
+      const obj = document.getElementById("planoSvg");
+      if (!obj) {
+        console.error("[SVG] No se encuentra el elemento #planoSvg");
+        return;
+      }
+
+      function conectarEventos() {
+        const svgDoc = obj.contentDocument || (obj.getSVGDocument && obj.getSVGDocument());
+        if (!svgDoc) {
+          console.error("[SVG] No se pudo acceder a contentDocument/getSVGDocument.");
+          return;
+        }
+
+        const lotes = svgDoc.querySelectorAll(".lote");
+        console.log("[SVG] Lotes encontrados en el SVG:", lotes.length);
+
+        lotes.forEach(el => {
+          el.style.cursor = "pointer";
+          el.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const codigo = el.id;
+            console.log("[SVG] lote clicado:", codigo);
+            const datos = await obtenerLote(codigo);
+            mostrarLoteEnPanel(datos);
+          });
+        });
+
+        if (!lotes.length) {
+          console.warn("[SVG] Atención: no se encontró ningún elemento con class='lote'.");
+        }
+      }
+
+      obj.addEventListener("load", conectarEventos, { once: true });
+    }
+
+    let ESTADOS = {};
+    let SVG_DOC = null;
+    let SVG_LOTES = [];
+
+    const COLOR_DISPONIBLE = "#ffffff";
+    const COLOR_VENDIDO    = "#e74c3c";
+    const COLOR_SEPARADO   = "#f1c40f";
+    const COLOR_OTROS      = "#2f2f2f";
+
+    function normalizar(txt) {
+      return String(txt || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    async function cargarEstadosLotes() {
+      try {
+        const url = URL_API + "?todos=1";
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          console.error("[API] Error HTTP al pedir todos los lotes", res.status, res.statusText);
+          return;
+        }
+
+        const data = await res.json();
+        ESTADOS = {};
+
+        (data || []).forEach(row => {
+          const code = row.Codigo_Automatico;
+          const estado = row.Estado_en_fase_de_venta;
+          if (code) ESTADOS[code] = estado;
+        });
+
+        if (SVG_DOC && SVG_LOTES.length) {
+          pintarTodosPorEstado();
+        }
+      } catch (err) {
+        console.error("[API] Error cargando estados:", err);
+      }
+    }
+
+    function capturarSVG() {
+      const obj = document.getElementById("planoSvg");
+      if (!obj) return;
+
+      SVG_DOC = obj.contentDocument || (obj.getSVGDocument && obj.getSVGDocument());
+      if (!SVG_DOC) return;
+
+      SVG_LOTES = Array.from(SVG_DOC.querySelectorAll(".lote"));
+    }
+
+    function pintarTodosPorEstado() {
+      document.querySelectorAll(".btn-filtro").forEach(b => b.classList.remove("activo"));
+
+      SVG_LOTES.forEach(el => {
+        const codigo = el.id;
+        const estado = ESTADOS[codigo];
+        const estN = normalizar(estado);
+
+        el.style.stroke = "#000000";
+        el.style.strokeOpacity = 0.25;
+        el.style.strokeWidth = 2;
+
+        if (estN === "") {
+          el.style.fill = COLOR_DISPONIBLE;
+          el.style.fillOpacity = 0.55;
+        } else if (estN === "vendido") {
+          el.style.fill = COLOR_VENDIDO;
+          el.style.fillOpacity = 0.65;
+        } else if (estN === "separado") {
+          el.style.fill = COLOR_SEPARADO;
+          el.style.fillOpacity = 0.65;
+        } else {
+          el.style.fill = COLOR_OTROS;
+          el.style.fillOpacity = 0.55;
+        }
+      });
+    }
+
+    function aplicarFiltro(tipo) {
+      SVG_LOTES.forEach(el => {
+        const codigo = el.id;
+        const estado = ESTADOS[codigo];
+        const estN = normalizar(estado);
+
+        let coincide = false;
+        if (tipo === "disponibles") coincide = (estN === "");
+        if (tipo === "vendidos") coincide = (estN === "vendido");
+        if (tipo === "separados") coincide = (estN === "separado");
+
+        el.style.fill = COLOR_OTROS;
+        el.style.fillOpacity = 0.55;
+        el.style.stroke = "#000000";
+        el.style.strokeOpacity = 0.25;
+        el.style.strokeWidth = 2;
+
+        if (coincide) {
+          if (tipo === "disponibles") {
+            el.style.fill = COLOR_DISPONIBLE;
+            el.style.fillOpacity = 0.75;
+          }
+          if (tipo === "vendidos") {
+            el.style.fill = COLOR_VENDIDO;
+            el.style.fillOpacity = 0.75;
+          }
+          if (tipo === "separados") {
+            el.style.fill = COLOR_SEPARADO;
+            el.style.fillOpacity = 0.75;
+          }
+          el.style.strokeOpacity = 0.55;
+          el.style.strokeWidth = 2.5;
+        }
+      });
+    }
+
+    function configurarBotonesFiltro() {
+      const btnDisponibles = document.getElementById("btnDisponibles");
+      const btnVendidos = document.getElementById("btnVendidos");
+      const btnSeparados = document.getElementById("btnSeparados");
+
+      function activar(btn) {
+        document.querySelectorAll(".btn-filtro").forEach(b => b.classList.remove("activo"));
+        btn.classList.add("activo");
+      }
+
+      btnDisponibles.addEventListener("click", () => {
+        if (!SVG_DOC || !SVG_LOTES.length) return;
+        activar(btnDisponibles);
+        aplicarFiltro("disponibles");
+      });
+
+      btnVendidos.addEventListener("click", () => {
+        if (!SVG_DOC || !SVG_LOTES.length) return;
+        activar(btnVendidos);
+        aplicarFiltro("vendidos");
+      });
+
+      btnSeparados.addEventListener("click", () => {
+        if (!SVG_DOC || !SVG_LOTES.length) return;
+        activar(btnSeparados);
+        aplicarFiltro("separados");
+      });
+    }
+
+    function inicializarFiltros() {
+      configurarBotonesFiltro();
+      cargarEstadosLotes();
+
+      const obj = document.getElementById("planoSvg");
+      if (!obj) return;
+
+      obj.addEventListener("load", () => {
+        capturarSVG();
+        if (SVG_DOC && SVG_LOTES.length) {
+          pintarTodosPorEstado();
+        }
+      }, { once: true });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      inicializarEventosSVG();
+      inicializarFiltros();
+    });
+  </script>
+
+</body>
+</html>
