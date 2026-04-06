@@ -22,6 +22,8 @@
       position: sticky;
       top: 0;
       z-index: 999;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
     .btn-filtro {
@@ -42,6 +44,38 @@
       color: #fff;
     }
 
+    .acciones-topbar {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-actualizar {
+      border: 1px solid #0b57d0;
+      background: #0b57d0;
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .btn-actualizar:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .hora-actualizacion {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2c3e50;
+      white-space: nowrap;
+    }
+
     /* En móvil, que los botones se acomoden mejor */
     @media (max-width: 480px) {
       .top-bar {
@@ -51,18 +85,30 @@
         flex: 1 1 calc(50% - 10px);
         text-align: center;
       }
+      .acciones-topbar {
+        margin-left: 0;
+        width: 100%;
+        justify-content: space-between;
+      }
+      .btn-actualizar {
+        flex: 1 1 auto;
+        text-align: center;
+      }
+      .hora-actualizacion {
+        white-space: normal;
+      }
     }
 
     /* === LAYOUT POR DEFECTO: VERTICAL (MÓVIL) === */
     .layout {
       display: flex;
-      flex-direction: column;  /* SIEMPRE uno encima de otro por defecto */
+      flex-direction: column;
       height: 100vh;
     }
 
     .mapa-container {
       flex: none;
-      height: 75vh;           /* 3/4 del alto de la pantalla para el plano */
+      height: 75vh;
       overflow: auto;
       background: #fff;
     }
@@ -76,10 +122,10 @@
 
     .panel-info {
       flex: none;
-      height: 25vh;           /* 1/4 del alto de la pantalla para el panel */
+      height: 25vh;
       padding: 16px;
       background: #ffffff;
-      box-shadow: 0 -2px 6px rgba(0,0,0,0.1); /* sombra arriba */
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
       box-sizing: border-box;
       overflow-y: auto;
       font-size: 25px;
@@ -122,7 +168,6 @@
     .estado-reservado  { color: #f1c40f; font-weight: bold; }
     .estado-vendido    { color: #e74c3c; font-weight: bold; }
 
-    /* Panel en hasta 2 columnas */
     #infoLote {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -131,45 +176,46 @@
       align-items: start;
     }
 
-    /* En móviles muy estrechos: una sola columna */
     @media (max-width: 480px) {
       #infoLote {
         grid-template-columns: 1fr;
       }
     }
 
-    /* === VISTA ESCRITORIO (ANCHA): COMO ANTES === */
     @media (min-width: 1024px) {
       .layout {
-        flex-direction: row;   /* mapa izquierda, panel derecha */
+        flex-direction: row;
       }
 
       .mapa-container {
         flex: 2;
-        height: auto;          /* que se adapte al alto del viewport */
+        height: auto;
       }
 
       .panel-info {
         flex: 1;
         height: auto;
-        box-shadow: -2px 0 6px rgba(0,0,0,0.1); /* sombra a la izquierda */
+        box-shadow: -2px 0 6px rgba(0,0,0,0.1);
       }
     }
   </style>
 </head>
 <body>
 
-  <!-- === NUEVO: Barra de filtros === -->
   <div class="top-bar">
     <button class="btn-filtro" id="btnDisponibles">Lotes Disponibles</button>
     <button class="btn-filtro" id="btnReservados">Lotes Reservados</button>
     <button class="btn-filtro" id="btnFinanciados">Lotes Financiados</button>
     <button class="btn-filtro" id="btnContado">Lotes al Contado</button>
     <button class="btn-filtro" id="btnNoDisponibles">Lotes NO Disponibles</button>
+
+    <div class="acciones-topbar">
+      <button class="btn-actualizar" id="btnActualizarDatos">Actualizar datos</button>
+      <span class="hora-actualizacion" id="horaActualizacion">Última actualización: --</span>
+    </div>
   </div>
 
   <div class="layout">
-    <!-- Plano SVG -->
     <div class="mapa-container">
       <object
         id="planoSvg"
@@ -178,7 +224,6 @@
       </object>
     </div>
 
-    <!-- Panel de información del lote -->
     <div class="panel-info">
       <h2 id="tituloLote">Seleccione un lote</h2>
       <div id="infoLote">
@@ -188,26 +233,110 @@
   </div>
 
   <script>
-    // URL de tu Apps Script (solo lectura)
     const URL_API = "https://script.google.com/macros/s/AKfycbwmyLh86dC2fE-4mRWoaSadbtjkCU-Jcl3ZcYKN3ZdgVxo__RG0Orl7sdaxxi0JSiNR/exec";
 
-    async function obtenerLote(codigo) {
+    // Cache segura
+    let CACHE_LOTES = {};
+    let ESTADOS = {};
+    let MOTIVOS = {};
+    let SVG_DOC = null;
+    let SVG_LOTES = [];
+    let LOTE_SELECCIONADO = null;
+    let filtroActual = null;
+
+    const COLOR_DISPONIBLE     = "#ffffff";
+    const COLOR_RESERVADO      = "#f1c40f";
+    const COLOR_FINANCIADO     = "#1f4ed8";
+    const COLOR_CONTADO        = "#e74c3c";
+    const COLOR_NO_DISPONIBLE  = "#2f2f2f";
+    const COLOR_SOMBRA         = "#000000";
+    const COLOR_SELECCION      = "#00E5FF";
+
+    function formatearFechaHora(fecha) {
+      return new Intl.DateTimeFormat("es-PE", {
+        timeZone: "America/Lima",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+      }).format(fecha);
+    }
+
+    function actualizarTextoHora(fecha = null) {
+      const el = document.getElementById("horaActualizacion");
+      if (!el) return;
+      el.textContent = fecha
+        ? "Última actualización: " + formatearFechaHora(fecha)
+        : "Última actualización: --";
+    }
+
+    function normalizar(txt) {
+      return String(txt || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function tieneDato(txt) {
+      return String(txt || "").trim() !== "";
+    }
+
+    function loteTieneFichaCompleta(lote) {
+      if (!lote || typeof lote !== "object") return false;
+      const camposClave = [
+        "Codigo_Automatico",
+        "Proyecto",
+        "Nombre_Lote"
+      ];
+      return camposClave.every(campo => campo in lote);
+    }
+
+    async function obtenerLoteDesdeAPI(codigo) {
       try {
         const url = URL_API + "?lote=" + encodeURIComponent(codigo);
         console.log("[API] Llamando a:", url);
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
 
         if (!res.ok) {
           console.error("[API] Error HTTP", res.status, res.statusText);
           return null;
         }
+
         const data = await res.json();
-        console.log("[API] Respuesta:", data);
+        console.log("[API] Respuesta lote individual:", data);
+
+        if (data && typeof data === "object" && data.Codigo_Automatico) {
+          CACHE_LOTES[data.Codigo_Automatico] = {
+            ...(CACHE_LOTES[data.Codigo_Automatico] || {}),
+            ...data
+          };
+        }
+
         return data;
       } catch (err) {
         console.error("[API] Error de red o parseo:", err);
         return null;
       }
+    }
+
+    async function obtenerLoteSeguro(codigo) {
+      const enCache = CACHE_LOTES[codigo];
+
+      if (loteTieneFichaCompleta(enCache)) {
+        return enCache;
+      }
+
+      const desdeAPI = await obtenerLoteDesdeAPI(codigo);
+
+      if (desdeAPI && Object.keys(desdeAPI).length > 0) {
+        return desdeAPI;
+      }
+
+      return enCache || null;
     }
 
     function mostrarLoteEnPanel(lote) {
@@ -221,12 +350,6 @@
       }
 
       titulo.textContent = "Lote " + (lote.Nombre_Lote || lote.Codigo_Automatico);
-
-      let claseEstado = "";
-      const estado = String(lote.Estado || "").toLowerCase();
-      if (estado.includes("disponible")) claseEstado = "estado-disponible";
-      if (estado.includes("reservado"))  claseEstado = "estado-reservado";
-      if (estado.includes("vendido"))    claseEstado = "estado-vendido";
 
       info.innerHTML = `
         <div class="campo"><b>Código automático:</b><span class="valor">${lote.Codigo_Automatico || ""}</span></div>
@@ -246,101 +369,6 @@
         <div class="campo"><b>Estado en fase de venta:</b><span class="valor">${lote.Estado_en_fase_de_venta || ""}</span></div>
         <div class="campo"><b>Asesor responsable:</b><span class="valor">${lote.Asesor_Responsable || ""}</span></div>
       `;
-    }
-
-    /**
-     * Conecta los clics del SVG con la API
-     */
-    function inicializarEventosSVG() {
-      const obj = document.getElementById("planoSvg");
-      if (!obj) {
-        console.error("[SVG] No se encuentra el elemento #planoSvg");
-        return;
-      }
-
-      console.log("[SVG] inicializarEventosSVG ejecutado");
-
-      // SIEMPRE esperamos al evento 'load' del <object>
-      function conectarEventos() {
-        const svgDoc = obj.contentDocument || (obj.getSVGDocument && obj.getSVGDocument());
-        if (!svgDoc) {
-          console.error("[SVG] No se pudo acceder a contentDocument/getSVGDocument.");
-          return;
-        }
-
-        const lotes = svgDoc.querySelectorAll(".lote");
-        console.log("[SVG] Lotes encontrados en el SVG:", lotes.length);
-
-        lotes.forEach(el => {
-          el.style.cursor = "pointer";
-          el.addEventListener("click", async (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            const codigo = el.id;
-            console.log("[SVG] lote clicado:", codigo);
-            const datos = await obtenerLote(codigo);
-            mostrarLoteEnPanel(datos);
-
-            LOTE_SELECCIONADO = codigo;
-            if (filtroActual === null) {
-              pintarTodosPorEstado();
-            } else {
-              aplicarFiltro(filtroActual);
-            }
-          });
-        });
-
-        if (!lotes.length) {
-          console.warn("[SVG] Atención: no se encontró ningún elemento con class='lote'.");
-        }
-      }
-
-      obj.addEventListener("load", conectarEventos, { once: true });
-    }
-
-    window.addEventListener("DOMContentLoaded", () => {
-      console.log("[APP] DOMContentLoaded");
-      inicializarEventosSVG();
-    });
-
-    window.addEventListener("DOMContentLoaded", () => {
-      console.log("[APP] DOMContentLoaded");
-      inicializarEventosSVG();
-    });
-
-    /* ===========================================================
-       =================== NUEVO: FILTROS =========================
-       =========================================================== */
-
-    // Cache de datos por código
-    let ESTADOS = {};
-    let MOTIVOS = {};
-    let SVG_DOC = null;
-    let SVG_LOTES = [];
-    let LOTE_SELECCIONADO = null;
-
-    // Colores
-    const COLOR_DISPONIBLE     = "#ffffff";  // blanco
-    const COLOR_RESERVADO      = "#f1c40f";  // amarillo
-    const COLOR_FINANCIADO     = "#1f4ed8";  // azul
-    const COLOR_CONTADO        = "#e74c3c";  // rojo
-    const COLOR_NO_DISPONIBLE  = "#2f2f2f";  // plomo oscuro
-    const COLOR_SOMBRA         = "#000000";  // negro
-    const COLOR_SELECCION      = "#00E5FF";  // cian/turquesa brillante
-
-    // Estado de filtro actual (null = sin filtro / por defecto)
-    let filtroActual = null; // "disponibles" | "reservados" | "financiados" | "contado" | "no_disponibles" | null
-
-    function normalizar(txt) {
-      return String(txt || "")
-        .trim()
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-    }
-
-    function tieneDato(txt) {
-      return String(txt || "").trim() !== "";
     }
 
     function aplicarEstiloSeleccion(el) {
@@ -389,12 +417,11 @@
       return { tipo: "otros", color: COLOR_NO_DISPONIBLE, fillOpacity: 0.72 };
     }
 
-    // Carga todos los estados desde Apps Script (requiere ?todos=1)
     async function cargarEstadosLotes() {
       try {
         const url = URL_API + "?todos=1";
         console.log("[API] Cargando estados:", url);
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
 
         if (!res.ok) {
           console.error("[API] Error HTTP al pedir todos los lotes", res.status, res.statusText);
@@ -403,30 +430,43 @@
 
         const data = await res.json();
 
-        // Esperamos array de objetos con: Codigo_Automatico, Estado_en_fase_de_venta, Motivo_por_qué_no_disponible
         ESTADOS = {};
         MOTIVOS = {};
 
         (data || []).forEach(row => {
           const code = row.Codigo_Automatico;
           if (code) {
+            CACHE_LOTES[code] = {
+              ...(CACHE_LOTES[code] || {}),
+              ...row
+            };
             ESTADOS[code] = row.Estado_en_fase_de_venta || "";
             MOTIVOS[code] = row.Motivo_por_qué_no_disponible || "";
           }
         });
 
         console.log("[API] Estados cargados:", Object.keys(ESTADOS).length);
+        actualizarTextoHora(new Date());
 
-        // Si ya tenemos SVG cargado, pintamos por defecto
         if (SVG_DOC && SVG_LOTES.length) {
-          pintarTodosPorEstado(); // al refrescar debe quedar sin filtro
+          if (filtroActual === null) {
+            pintarTodosPorEstado();
+          } else {
+            aplicarFiltro(filtroActual);
+          }
+        }
+
+        if (LOTE_SELECCIONADO && CACHE_LOTES[LOTE_SELECCIONADO]) {
+          const loteActual = CACHE_LOTES[LOTE_SELECCIONADO];
+          if (loteTieneFichaCompleta(loteActual)) {
+            mostrarLoteEnPanel(loteActual);
+          }
         }
       } catch (err) {
         console.error("[API] Error cargando estados:", err);
       }
     }
 
-    // Obtiene la lista de lotes del SVG y la guarda
     function capturarSVG() {
       const obj = document.getElementById("planoSvg");
       if (!obj) return;
@@ -438,11 +478,8 @@
       console.log("[FILTRO] Lotes capturados del SVG:", SVG_LOTES.length);
     }
 
-    // Pinta cada lote según lógica general (sin filtro)
     function pintarTodosPorEstado() {
-      filtroActual = null; // reset de filtro al refrescar
-
-      // Apagar estado visual de botones
+      filtroActual = null;
       document.querySelectorAll(".btn-filtro").forEach(b => b.classList.remove("activo"));
 
       SVG_LOTES.forEach(el => {
@@ -460,9 +497,8 @@
       reaplicarSeleccion();
     }
 
-    // Aplica filtro: resalta los que coinciden y pone negro al resto
     function aplicarFiltro(tipo) {
-      filtroActual = tipo; // "disponibles" | "reservados" | "financiados" | "contado" | "no_disponibles"
+      filtroActual = tipo;
 
       SVG_LOTES.forEach(el => {
         const codigo = el.id;
@@ -475,7 +511,6 @@
         if (tipo === "contado")        coincide = (visual.tipo === "contado");
         if (tipo === "no_disponibles") coincide = tieneDato(MOTIVOS[codigo]);
 
-        // Base: todos negros
         el.style.fill = COLOR_SOMBRA;
         el.style.fillOpacity = 0.78;
         el.style.stroke = "#000000";
@@ -483,7 +518,6 @@
         el.style.strokeWidth = 2;
         el.style.strokeDasharray = "";
 
-        // Si coincide, resalta con el color correspondiente según la lógica general
         if (coincide) {
           el.style.fill = visual.color;
           el.style.fillOpacity = visual.fillOpacity;
@@ -495,7 +529,6 @@
       reaplicarSeleccion();
     }
 
-    // Conecta botones
     function configurarBotonesFiltro() {
       const btnDisponibles   = document.getElementById("btnDisponibles");
       const btnReservados    = document.getElementById("btnReservados");
@@ -539,7 +572,72 @@
       });
     }
 
-    // Inicializa todo el sistema de filtros (sin tocar tu lógica funcional)
+    function configurarBotonActualizar() {
+      const btn = document.getElementById("btnActualizarDatos");
+      if (!btn) return;
+
+      btn.addEventListener("click", async () => {
+        const textoOriginal = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Actualizando...";
+
+        try {
+          await cargarEstadosLotes();
+        } finally {
+          btn.disabled = false;
+          btn.textContent = textoOriginal;
+        }
+      });
+    }
+
+    function inicializarEventosSVG() {
+      const obj = document.getElementById("planoSvg");
+      if (!obj) {
+        console.error("[SVG] No se encuentra el elemento #planoSvg");
+        return;
+      }
+
+      console.log("[SVG] inicializarEventosSVG ejecutado");
+
+      function conectarEventos() {
+        const svgDoc = obj.contentDocument || (obj.getSVGDocument && obj.getSVGDocument());
+        if (!svgDoc) {
+          console.error("[SVG] No se pudo acceder a contentDocument/getSVGDocument.");
+          return;
+        }
+
+        const lotes = svgDoc.querySelectorAll(".lote");
+        console.log("[SVG] Lotes encontrados en el SVG:", lotes.length);
+
+        lotes.forEach(el => {
+          el.style.cursor = "pointer";
+          el.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            const codigo = el.id;
+            console.log("[SVG] lote clicado:", codigo);
+
+            const datos = await obtenerLoteSeguro(codigo);
+            mostrarLoteEnPanel(datos);
+
+            LOTE_SELECCIONADO = codigo;
+            if (filtroActual === null) {
+              pintarTodosPorEstado();
+            } else {
+              aplicarFiltro(filtroActual);
+            }
+          });
+        });
+
+        if (!lotes.length) {
+          console.warn("[SVG] Atención: no se encontró ningún elemento con class='lote'.");
+        }
+      }
+
+      obj.addEventListener("load", conectarEventos, { once: true });
+    }
+
     function inicializarFiltros() {
       configurarBotonesFiltro();
       cargarEstadosLotes();
@@ -547,22 +645,22 @@
       const obj = document.getElementById("planoSvg");
       if (!obj) return;
 
-      // Cuando cargue el SVG, capturamos lotes y pintamos por estado
       obj.addEventListener("load", () => {
         capturarSVG();
 
-        // Si ya cargamos estados, pintamos por estado; si no, igual pintamos y luego se actualizará
         if (SVG_DOC && SVG_LOTES.length) {
           pintarTodosPorEstado();
         }
       }, { once: true });
     }
 
-    // NUEVO: arrancar filtros al cargar la página
     window.addEventListener("DOMContentLoaded", () => {
+      console.log("[APP] DOMContentLoaded");
+      actualizarTextoHora();
+      inicializarEventosSVG();
       inicializarFiltros();
+      configurarBotonActualizar();
     });
-
   </script>
 
 </body>
