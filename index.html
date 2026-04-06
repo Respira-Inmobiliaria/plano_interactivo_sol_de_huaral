@@ -93,14 +93,29 @@
     }
 
     .campo {
-      margin-bottom: 4px;
+      margin-bottom: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      min-width: 0;
     }
 
     .campo b {
       display: inline-block;
-      width: 130px;
-      color: #555;
-      font-weight: 600;
+      width: 170px;
+      min-width: 170px;
+      color: #000000;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .campo .valor {
+      color: #4682B4;
+      font-weight: 400;
+      line-height: 1.25;
+      flex: 1 1 auto;
+      min-width: 0;
+      word-break: break-word;
     }
 
     .estado-disponible { color: #2ecc71; font-weight: bold; }
@@ -111,8 +126,9 @@
     #infoLote {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      column-gap: 12px;
-      row-gap: 4px;
+      column-gap: 28px;
+      row-gap: 16px;
+      align-items: start;
     }
 
     /* En móviles muy estrechos: una sola columna */
@@ -213,22 +229,22 @@
       if (estado.includes("vendido"))    claseEstado = "estado-vendido";
 
       info.innerHTML = `
-        <div class="campo"><b>Código automático:</b> ${lote.Codigo_Automatico || ""}</div>
-        <div class="campo"><b>Proyecto:</b> ${lote.Proyecto || ""}</div>
-        <div class="campo"><b>Manzana:</b> ${lote.Manzana || ""}</div>
-        <div class="campo"><b>Nombre de lote:</b> ${lote.Nombre_Lote || ""}</div>
-        <div class="campo"><b>Área (m²):</b> ${lote.Área_Lote_m2 || ""}</div>
-        <div class="campo"><b>Frente (m):</b> ${lote.Frente_m || ""}</div>
-        <div class="campo"><b>Derecha (m):</b> ${lote.Derecha_m || ""}</div>
-        <div class="campo"><b>Izquierda (m):</b> ${lote.Izquierda_m || ""}</div>
-        <div class="campo"><b>Fondo (m):</b> ${lote.Fondo_m || ""}</div>
-        <div class="campo"><b>Estado:</b> <span class="${claseEstado}">${lote.Estado || ""}</span></div>
-        <div class="campo"><b>Precio lista:</b> ${lote.Precio_Lista || ""}</div>
-        <div class="campo"><b>Permite otro precio:</b> ${lote.Permitir_Otro_Precio || ""}</div>
-        <div class="campo"><b>Ubicación:</b> ${lote.Detalles_de_Ubicación || ""}</div>
-        <div class="campo"><b>Motivo no disponible:</b> ${lote.Motivo_por_qué_no_disponible || ""}</div>
-        <div class="campo"><b>Estado en fase de venta:</b> ${lote.Estado_en_fase_de_venta || ""}</div>
-        <div class="campo"><b>Asesor responsable:</b> ${lote.Asesor_Responsable || ""}</div>
+        <div class="campo"><b>Código automático:</b><span class="valor">${lote.Codigo_Automatico || ""}</span></div>
+        <div class="campo"><b>Proyecto:</b><span class="valor">${lote.Proyecto || ""}</span></div>
+        <div class="campo"><b>Manzana:</b><span class="valor">${lote.Manzana || ""}</span></div>
+        <div class="campo"><b>Nombre de lote:</b><span class="valor">${lote.Nombre_Lote || ""}</span></div>
+        <div class="campo"><b>Área (m²):</b><span class="valor">${lote.Área_Lote_m2 || ""}</span></div>
+        <div class="campo"><b>Frente (m):</b><span class="valor">${lote.Frente_m || ""}</span></div>
+        <div class="campo"><b>Derecha (m):</b><span class="valor">${lote.Derecha_m || ""}</span></div>
+        <div class="campo"><b>Izquierda (m):</b><span class="valor">${lote.Izquierda_m || ""}</span></div>
+        <div class="campo"><b>Fondo (m):</b><span class="valor">${lote.Fondo_m || ""}</span></div>
+        <div class="campo"><b>Estado:</b><span class="valor">${lote.Estado || ""}</span></div>
+        <div class="campo"><b>Precio lista:</b><span class="valor">${lote.Precio_Lista || ""}</span></div>
+        <div class="campo"><b>Permite otro precio:</b><span class="valor">${lote.Permitir_Otro_Precio || ""}</span></div>
+        <div class="campo"><b>Ubicación:</b><span class="valor">${lote.Detalles_de_Ubicación || ""}</span></div>
+        <div class="campo"><b>Motivo no disponible:</b><span class="valor">${lote.Motivo_por_qué_no_disponible || ""}</span></div>
+        <div class="campo"><b>Estado en fase de venta:</b><span class="valor">${lote.Estado_en_fase_de_venta || ""}</span></div>
+        <div class="campo"><b>Asesor responsable:</b><span class="valor">${lote.Asesor_Responsable || ""}</span></div>
       `;
     }
 
@@ -264,6 +280,13 @@
             console.log("[SVG] lote clicado:", codigo);
             const datos = await obtenerLote(codigo);
             mostrarLoteEnPanel(datos);
+
+            LOTE_SELECCIONADO = codigo;
+            if (filtroActual === null) {
+              pintarTodosPorEstado();
+            } else {
+              aplicarFiltro(filtroActual);
+            }
           });
         });
 
@@ -294,6 +317,7 @@
     let MOTIVOS = {};
     let SVG_DOC = null;
     let SVG_LOTES = [];
+    let LOTE_SELECCIONADO = null;
 
     // Colores
     const COLOR_DISPONIBLE     = "#ffffff";  // blanco
@@ -302,6 +326,7 @@
     const COLOR_CONTADO        = "#e74c3c";  // rojo
     const COLOR_NO_DISPONIBLE  = "#2f2f2f";  // plomo oscuro
     const COLOR_SOMBRA         = "#000000";  // negro
+    const COLOR_SELECCION      = "#00E5FF";  // cian/turquesa brillante
 
     // Estado de filtro actual (null = sin filtro / por defecto)
     let filtroActual = null; // "disponibles" | "reservados" | "financiados" | "contado" | "no_disponibles" | null
@@ -316,6 +341,22 @@
 
     function tieneDato(txt) {
       return String(txt || "").trim() !== "";
+    }
+
+    function aplicarEstiloSeleccion(el) {
+      if (!el) return;
+      el.style.stroke = COLOR_SELECCION;
+      el.style.strokeOpacity = 1;
+      el.style.strokeWidth = 4;
+      el.style.strokeDasharray = "10,6";
+      el.style.strokeLinecap = "round";
+      el.style.strokeLinejoin = "round";
+    }
+
+    function reaplicarSeleccion() {
+      if (!LOTE_SELECCIONADO || !SVG_DOC) return;
+      const el = SVG_DOC.getElementById(LOTE_SELECCIONADO);
+      if (el) aplicarEstiloSeleccion(el);
     }
 
     function obtenerVisualLote(codigo) {
@@ -411,9 +452,12 @@
         el.style.stroke = "#000000";
         el.style.strokeOpacity = 0.35;
         el.style.strokeWidth = 2;
+        el.style.strokeDasharray = "";
         el.style.fill = visual.color;
         el.style.fillOpacity = visual.fillOpacity;
       });
+
+      reaplicarSeleccion();
     }
 
     // Aplica filtro: resalta los que coinciden y pone negro al resto
@@ -437,6 +481,7 @@
         el.style.stroke = "#000000";
         el.style.strokeOpacity = 0.5;
         el.style.strokeWidth = 2;
+        el.style.strokeDasharray = "";
 
         // Si coincide, resalta con el color correspondiente según la lógica general
         if (coincide) {
@@ -446,6 +491,8 @@
           el.style.strokeWidth = 2.5;
         }
       });
+
+      reaplicarSeleccion();
     }
 
     // Conecta botones
@@ -504,7 +551,7 @@
       obj.addEventListener("load", () => {
         capturarSVG();
 
-        // Si ya cargamos estados, pintamos; si no, igual pintamos y luego se actualizará
+        // Si ya cargamos estados, pintamos por estado; si no, igual pintamos y luego se actualizará
         if (SVG_DOC && SVG_LOTES.length) {
           pintarTodosPorEstado();
         }
