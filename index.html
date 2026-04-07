@@ -295,6 +295,71 @@
       return camposClave.every(campo => campo in lote);
     }
 
+    function obtenerDatoLider(lote, nombreColumna) {
+      return lote ? (lote[nombreColumna] || "") : "";
+    }
+
+    function tieneReservaValidaLider(lote) {
+      if (!lote) return false;
+
+      const estadoFormal = String(lote.Estado_en_fase_de_venta || "").trim();
+      const reservarLote = String(obtenerDatoLider(lote, "Reservar_lote") || "").trim();
+      const liderReserva = String(obtenerDatoLider(lote, "Líder_Reserva") || "").trim();
+      const asesorReserva = String(obtenerDatoLider(lote, "Asesor_Reserva") || "").trim();
+
+      return (
+        estadoFormal === "" &&
+        normalizar(reservarLote) === "reservado" &&
+        liderReserva !== "" &&
+        asesorReserva !== ""
+      );
+    }
+
+    function obtenerEstadoVisualLote(lote) {
+      if (!lote) return "";
+
+      const estadoFormal = String(lote.Estado_en_fase_de_venta || "").trim();
+      if (estadoFormal !== "") {
+        return estadoFormal;
+      }
+
+      if (tieneReservaValidaLider(lote)) {
+        return "Reservado";
+      }
+
+      return "";
+    }
+
+    function obtenerAsesorVisualLote(lote) {
+      if (!lote) return "";
+
+      const estadoFormal = String(lote.Estado_en_fase_de_venta || "").trim();
+      if (estadoFormal !== "") {
+        return lote.Asesor_Responsable || "";
+      }
+
+      if (tieneReservaValidaLider(lote)) {
+        return obtenerDatoLider(lote, "Asesor_Reserva");
+      }
+
+      return "";
+    }
+
+    function obtenerLiderVisualLote(lote) {
+      if (!lote) return "";
+
+      const estadoFormal = String(lote.Estado_en_fase_de_venta || "").trim();
+      if (estadoFormal !== "") {
+        return lote.Líder_Responsable || "";
+      }
+
+      if (tieneReservaValidaLider(lote)) {
+        return obtenerDatoLider(lote, "Líder_Reserva");
+      }
+
+      return lote.Líder_Responsable || "";
+    }
+
     async function obtenerLoteDesdeAPI(codigo) {
       try {
         const url = URL_API + "?lote=" + encodeURIComponent(codigo);
@@ -349,6 +414,10 @@
         return;
       }
 
+      const estadoVisual = obtenerEstadoVisualLote(lote);
+      const asesorVisual = obtenerAsesorVisualLote(lote);
+      const liderVisual  = obtenerLiderVisualLote(lote);
+
       titulo.textContent = "Lote " + (lote.Nombre_Lote || lote.Codigo_Automatico);
 
       info.innerHTML = `
@@ -366,8 +435,9 @@
         <div class="campo"><b>Permite otro precio:</b><span class="valor">${lote.Permitir_Otro_Precio || ""}</span></div>
         <div class="campo"><b>Ubicación:</b><span class="valor">${lote.Detalles_de_Ubicación || ""}</span></div>
         <div class="campo"><b>Motivo no disponible:</b><span class="valor">${lote.Motivo_por_qué_no_disponible || ""}</span></div>
-        <div class="campo"><b>Estado en fase de venta:</b><span class="valor">${lote.Estado_en_fase_de_venta || ""}</span></div>
-        <div class="campo"><b>Asesor responsable:</b><span class="valor">${lote.Asesor_Responsable || ""}</span></div>
+        <div class="campo"><b>Estado en fase de venta:</b><span class="valor">${estadoVisual}</span></div>
+        <div class="campo"><b>Líder Responsable:</b><span class="valor">${liderVisual}</span></div>
+        <div class="campo"><b>Asesor responsable:</b><span class="valor">${asesorVisual}</span></div>
       `;
     }
 
@@ -388,8 +458,9 @@
     }
 
     function obtenerVisualLote(codigo) {
-      const estado = ESTADOS[codigo];
-      const motivo = MOTIVOS[codigo];
+      const lote = CACHE_LOTES[codigo] || null;
+      const estado = lote ? obtenerEstadoVisualLote(lote) : (ESTADOS[codigo] || "");
+      const motivo = lote ? (lote.Motivo_por_qué_no_disponible || "") : (MOTIVOS[codigo] || "");
 
       const estN = normalizar(estado);
       const motivoTieneDato = tieneDato(motivo);
@@ -440,7 +511,7 @@
               ...(CACHE_LOTES[code] || {}),
               ...row
             };
-            ESTADOS[code] = row.Estado_en_fase_de_venta || "";
+            ESTADOS[code] = obtenerEstadoVisualLote(row);
             MOTIVOS[code] = row.Motivo_por_qué_no_disponible || "";
           }
         });
